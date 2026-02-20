@@ -56,7 +56,6 @@ router.post("/", async (req, res) => {
 
     // ── Step 3: Extract intelligence from scammer message ────────────────────
     const extracted = await extractIntelligence(messageText, conversationHistory);
-    console.log(`🕵️ Extracted:`, JSON.stringify(extracted));
 
     // Single updateSession call per turn — merges detection + extraction results
     updateSession(sessionId, {
@@ -69,13 +68,26 @@ router.post("/", async (req, res) => {
       ...extracted,
     });
 
-    // ── Step 4: Generate adaptive persona reply ───────────────────────────────
+    // Get updated session with ALL accumulated intelligence across turns
     const updatedSession = getOrCreateSession(sessionId);
+
+    // Log full accumulated intelligence (not just this turn)
+    console.log(`🕵️ This turn:`, JSON.stringify(extracted));
+    console.log(`📦 Accumulated:`, JSON.stringify({
+      phoneNumbers: updatedSession.phoneNumbers,
+      upiIds: updatedSession.upiIds,
+      bankAccounts: updatedSession.bankAccounts,
+      phishingLinks: updatedSession.phishingLinks,
+      emailAddresses: updatedSession.emailAddresses,
+    }));
+
+    // ── Step 4: Generate adaptive persona reply ───────────────────────────────
+    // Pass full accumulated session so persona knows what intel is already collected
     const reply = await generatePersonaReply(
       detection.scamType || session.scamType || "unknown",
       messageText,
       conversationHistory,
-      updatedSession
+      updatedSession  // contains ALL accumulated intel across all turns
     );
 
     console.log(`🎭 Reply: "${reply}"`);
@@ -87,11 +99,12 @@ router.post("/", async (req, res) => {
       ? Math.floor(conversationHistory.length / 2) + 1
       : currentSession.totalMessages;
 
-    // Fire callback if: threshold met OR this is turn 9+ (near end of 10-turn max)
-    // Always re-fire at turn 9+ to ensure final intelligence is submitted
-    const isNearEnd = currentTurn >= 9;
-    const shouldFire = shouldTriggerCallback(currentSession) || 
-                       (isNearEnd && currentSession.scamConfirmed && !currentSession.callbackSent);
+    // Fire callback LATE (turn 8+) not early — early firing = empty intelligence = lost 40 points
+    const isNearEnd = currentTurn >= 8;
+    const isDefinitelyEnd = currentTurn >= 10;
+    const shouldFire = shouldTriggerCallback(currentSession) ||
+                       (isNearEnd && currentSession.scamConfirmed && !currentSession.callbackSent) ||
+                       (isDefinitelyEnd && !currentSession.callbackSent);
 
     if (shouldFire) {
       // Fire async - don't block the response

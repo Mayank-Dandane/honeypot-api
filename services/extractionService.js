@@ -51,9 +51,10 @@ async function extractIntelligence(message, conversationHistory = []) {
   };
 
   try {
-    // Combine recent messages for better context extraction
-    const recentMessages = conversationHistory
-      .slice(-4)
+    // Use FULL conversation history for extraction — never miss intelligence from early turns
+    // Only extract from SCAMMER messages (sender: scammer) not our own replies
+    const allScammerMessages = conversationHistory
+      .filter((m) => m.sender === "scammer")
       .map((m) => m.text)
       .concat([message])
       .join(" | ");
@@ -62,10 +63,10 @@ async function extractIntelligence(message, conversationHistory = []) {
       model: "llama-3.1-8b-instant",
       messages: [
         { role: "system", content: EXTRACTION_SYSTEM_PROMPT },
-        { role: "user", content: `Extract from: "${recentMessages}"` },
+        { role: "user", content: `Extract from ALL scammer messages: "${allScammerMessages}"` },
       ],
       temperature: 0.1,
-      max_tokens: 400,
+      max_tokens: 500,
       response_format: { type: "json_object" },
     });
 
@@ -136,13 +137,17 @@ function extractWithRegex(text) {
     p.replace(/[\s\-]/g, "").replace(/^91/, "+91")
   );
 
-  // UPI IDs
-  const upiRegex = /[a-zA-Z0-9._\-+]+@[a-zA-Z]{3,}/g;
+  // UPI IDs — catches formats like scammer.fraud@fakebank, name@ybl, number@okicici
+  const upiRegex = /[a-zA-Z0-9._\-+]+@[a-zA-Z][a-zA-Z0-9]{2,}/g;
   const upis = text.match(upiRegex) || [];
-  // Filter out emails (handled separately)
-  result.upiIds = upis.filter(
-    (u) => !u.includes(".com") && !u.includes(".in") && !u.includes(".org")
-  );
+  // Filter out standard emails but keep UPI IDs
+  // UPI handles don't have TLDs (.com .in .org) after the bank name
+  result.upiIds = upis.filter((u) => {
+    const afterAt = u.split("@")[1] || "";
+    const hasCommonTLD = /\.(com|in|org|net|io|co)$/i.test(afterAt);
+    const isCommonEmail = /gmail|yahoo|hotmail|outlook|rediff/i.test(afterAt);
+    return !hasCommonTLD && !isCommonEmail;
+  });
 
   // Email addresses
   const emailRegex = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
@@ -153,12 +158,14 @@ function extractWithRegex(text) {
   result.ifscCodes = text.match(ifscRegex) || [];
 
   // Bank account numbers (9-18 digits, standalone)
+  // Must be purely numeric — reject text strings like "SBI account number"
   const accountRegex = /\b\d{9,18}\b/g;
   const potentialAccounts = text.match(accountRegex) || [];
-  // Filter out phone numbers and OTPs
-  result.bankAccounts = potentialAccounts.filter(
-    (a) => a.length >= 11 && !result.phoneNumbers.some((p) => p.includes(a))
-  );
+  result.bankAccounts = potentialAccounts.filter((a) => {
+    // Must be 11+ digits, not a phone number, not an OTP (4-8 digits)
+    const isPhone = result.phoneNumbers.some((p) => p.replace(/\D/g, "").includes(a));
+    return a.length >= 11 && !isPhone;
+  });
 
   // URLs and phishing links
   const urlRegex =

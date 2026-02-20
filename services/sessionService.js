@@ -87,22 +87,18 @@ function getSession(sessionId) {
 
 /**
  * Check if callback should be triggered
- * Trigger when: scam confirmed AND (5+ messages OR has intelligence extracted)
+ * Only fire at end of conversation (8+ messages) to ensure ALL intelligence is captured
+ * Firing too early = empty intelligence arrays = lost points
  */
 function shouldTriggerCallback(session) {
   if (session.callbackSent) return false;
   if (!session.scamConfirmed) return false;
 
-  const hasIntelligence =
-    session.upiIds.length > 0 ||
-    session.phoneNumbers.length > 0 ||
-    session.bankAccounts.length > 0 ||
-    session.phishingLinks.length > 0 ||
-    session.emailAddresses.length > 0;
+  // Wait until at least 8 messages exchanged — ensures full conversation data
+  // The hackathon runs up to 10 turns so 8+ means we are near the end
+  const nearEnd = session.totalMessages >= 8;
 
-  const enoughMessages = session.totalMessages >= 5;
-
-  return hasIntelligence || enoughMessages;
+  return nearEnd;
 }
 
 /**
