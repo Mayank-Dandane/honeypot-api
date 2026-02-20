@@ -129,13 +129,18 @@ function extractWithRegex(text) {
 
   if (!text) return result;
 
-  // Phone numbers: Indian format
+  // Phone numbers: Indian format — normalize all to +91XXXXXXXXXX format
   const phoneRegex =
     /(?:\+91|91)?[\s\-]?[6-9]\d{9}|\b[6-9]\d{9}\b/g;
   const phones = text.match(phoneRegex) || [];
-  result.phoneNumbers = phones.map((p) =>
-    p.replace(/[\s\-]/g, "").replace(/^91/, "+91")
-  );
+  const normalizedPhones = phones.map((p) => {
+    const digits = p.replace(/[\s\-]/g, "");
+    if (digits.startsWith("+91")) return digits;
+    if (digits.startsWith("91") && digits.length === 12) return "+" + digits;
+    if (digits.length === 10) return "+91" + digits;
+    return digits;
+  });
+  result.phoneNumbers = [...new Set(normalizedPhones)]; // dedupe after normalizing
 
   // UPI IDs — catches formats like scammer.fraud@fakebank, name@ybl, number@okicici
   const upiRegex = /[a-zA-Z0-9._\-+]+@[a-zA-Z][a-zA-Z0-9]{2,}/g;
@@ -162,9 +167,10 @@ function extractWithRegex(text) {
   const accountRegex = /\b\d{9,18}\b/g;
   const potentialAccounts = text.match(accountRegex) || [];
   result.bankAccounts = potentialAccounts.filter((a) => {
-    // Must be 11+ digits, not a phone number, not an OTP (4-8 digits)
+    // Must be purely numeric 11-18 digits, not a phone number
     const isPhone = result.phoneNumbers.some((p) => p.replace(/\D/g, "").includes(a));
-    return a.length >= 11 && !isPhone;
+    const isPureNumeric = /^\d+$/.test(a);
+    return isPureNumeric && a.length >= 11 && a.length <= 18 && !isPhone;
   });
 
   // URLs and phishing links
