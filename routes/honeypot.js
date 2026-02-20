@@ -1,3 +1,35 @@
+/**
+ * Honeypot Route
+ * Main orchestration layer. Receives scam messages, runs detection,
+ * generates persona reply, extracts intelligence, and triggers callback.
+ */
+
+const express = require("express");
+const router = express.Router();
+
+const { detectScam } = require("../services/detectionService");
+const { generatePersonaReply } = require("../services/personaService");
+const { extractIntelligence } = require("../services/extractionService");
+const {
+  getOrCreateSession,
+  updateSession,
+  shouldTriggerCallback,
+} = require("../services/sessionService");
+const { sendFinalCallback } = require("../utils/callbackService");
+
+// ─── API Key Auth Middleware ───────────────────────────────────────────────────
+router.use((req, res, next) => {
+  const providedKey = req.headers["x-api-key"];
+  const expectedKey = process.env.API_KEY;
+
+  if (!expectedKey || providedKey === expectedKey) {
+    return next();
+  }
+
+  return res.status(401).json({ error: "Unauthorized: Invalid API key" });
+});
+
+// ─── Main Honeypot Endpoint ────────────────────────────────────────────────────
 router.post("/", async (req, res) => {
   const startTime = Date.now();
 
