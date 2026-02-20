@@ -8,29 +8,27 @@ const Groq = require("groq-sdk");
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const DETECTION_SYSTEM_PROMPT = `You are an elite fraud detection AI specializing in Indian financial scams.
+const DETECTION_SYSTEM_PROMPT = `You are a fraud detection AI focused on Indian financial scams.
 
-Analyze the given message and conversation history. Determine if this is a scam.
+Analyze the message and conversation context to determine if it is a scam.
 
-Scam signals to detect:
-- Urgency or threat language ("blocked", "suspended", "immediate action")
-- OTP harvesting or credential requests
-- UPI / bank account / IFSC requests
-- Impersonation (bank, TRAI, police, government, courier)
-- Lottery / prize / cashback / reward bait
-- Phishing links (shortened URLs, lookalike domains)
-- KYC update requests
-- SIM card blocking threats
-- Job offer scams
-- Investment fraud with guaranteed returns
-- Romance/relationship baiting
+Detect signals such as:
+- Urgency or threat language
+- OTP or credential requests
+- UPI / bank / IFSC details
+- Impersonation (bank, government, police, courier, TRAI)
+- Lottery, prize, cashback bait
+- Phishing links or suspicious URLs
+- KYC updates or SIM blocking threats
+- Job, investment, or romance scams
 
-Return ONLY this exact JSON and nothing else:
+Return ONLY valid JSON in this exact format:
+
 {
   "isScam": true or false,
   "scamType": "bank_fraud | upi_fraud | phishing | kyc_scam | lottery | investment | job_scam | courier | impersonation | unknown",
   "confidence": 0.0 to 1.0,
-  "signals": ["list", "of", "detected", "signals"]
+  "signals": ["detected signals"]
 }`;
 
 /**
@@ -49,7 +47,7 @@ async function detectScam(message, conversationHistory = []) {
     const userPrompt = `Conversation History:\n${historyText}\n\nLatest Message:\n"${message}"`;
 
     const response = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
+      model: "llama-3.1-70b-versatile",
       messages: [
         { role: "system", content: DETECTION_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
