@@ -50,12 +50,15 @@ router.post("/", async (req, res) => {
     // ── Step 1: Load or create session ──────────────────────────────────────
     const session = getOrCreateSession(sessionId);
 
-    // ── Step 2: Run scam detection (AI-powered) ──────────────────────────────
-    const detection = await detectScam(messageText, conversationHistory);
-    console.log(`🔍 Detection: ${detection.isScam ? "SCAM" : "CLEAN"} | Type: ${detection.scamType} | Confidence: ${detection.confidence}`);
+    // ── Steps 2 & 3: Run detection AND extraction in PARALLEL ───────────────
+    // Running simultaneously cuts response time roughly in half
+    const [detection, extracted] = await Promise.all([
+      detectScam(messageText, conversationHistory),
+      extractIntelligence(messageText, conversationHistory),
+    ]);
 
-    // ── Step 3: Extract intelligence from scammer message ────────────────────
-    const extracted = await extractIntelligence(messageText, conversationHistory);
+    console.log(`🔍 Detection: ${detection.isScam ? "SCAM" : "CLEAN"} | Type: ${detection.scamType} | Confidence: ${detection.confidence}`);
+    console.log(`🕵️ Extracted:`, JSON.stringify(extracted));
 
     // Single updateSession call per turn — merges detection + extraction results
     updateSession(sessionId, {
@@ -71,23 +74,12 @@ router.post("/", async (req, res) => {
     // Get updated session with ALL accumulated intelligence across turns
     const updatedSession = getOrCreateSession(sessionId);
 
-    // Log full accumulated intelligence (not just this turn)
-    console.log(`🕵️ This turn:`, JSON.stringify(extracted));
-    console.log(`📦 Accumulated:`, JSON.stringify({
-      phoneNumbers: updatedSession.phoneNumbers,
-      upiIds: updatedSession.upiIds,
-      bankAccounts: updatedSession.bankAccounts,
-      phishingLinks: updatedSession.phishingLinks,
-      emailAddresses: updatedSession.emailAddresses,
-    }));
-
     // ── Step 4: Generate adaptive persona reply ───────────────────────────────
-    // Pass full accumulated session so persona knows what intel is already collected
     const reply = await generatePersonaReply(
       detection.scamType || session.scamType || "unknown",
       messageText,
       conversationHistory,
-      updatedSession  // contains ALL accumulated intel across all turns
+      updatedSession
     );
 
     console.log(`🎭 Reply: "${reply}"`);

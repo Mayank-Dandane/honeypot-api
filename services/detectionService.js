@@ -49,13 +49,13 @@ async function detectScam(message, conversationHistory = []) {
     const userPrompt = `Conversation History:\n${historyText}\n\nLatest Message:\n"${message}"`;
 
     const response = await groq.chat.completions.create({
-    model: "llama-3.1-8b-instant",
+      model: "llama-3.3-70b-versatile",
       messages: [
         { role: "system", content: DETECTION_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ],
       temperature: 0.1,
-      max_tokens: 200,
+      max_tokens: 150,
       response_format: { type: "json_object" },
     });
 

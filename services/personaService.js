@@ -114,11 +114,22 @@ async function generatePersonaReply(
     // Determine current engagement phase
     const phase = getEngagementPhase(turnCount);
 
+    // Build "already have" list so persona stops asking for info it already collected
+    const alreadyHave = [];
+    if (sessionData.phoneNumbers?.length) alreadyHave.push(`phone: ${sessionData.phoneNumbers.join(", ")}`);
+    if (sessionData.upiIds?.length) alreadyHave.push(`UPI: ${sessionData.upiIds.join(", ")}`);
+    if (sessionData.bankAccounts?.length) alreadyHave.push(`account: ${sessionData.bankAccounts.join(", ")}`);
+    if (sessionData.phishingLinks?.length) alreadyHave.push(`links: ${sessionData.phishingLinks.join(", ")}`);
+    if (sessionData.emailAddresses?.length) alreadyHave.push(`email: ${sessionData.emailAddresses.join(", ")}`);
+    const alreadyHaveStr = alreadyHave.length
+      ? `ALREADY COLLECTED (do NOT ask for these again): ${alreadyHave.join(" | ")}`
+      : "Nothing collected yet — push to extract phone, UPI, account, or link this turn.";
+
     const userPrompt = `SCAM TYPE: ${scamType}
-REQUEST ID: ${Date.now()}-${Math.random().toString(36).slice(2,7)}
 TURN NUMBER: ${turnCount + 1}
 CURRENT PHASE: ${phase}
-INTELLIGENCE EXTRACTED SO FAR: ${extractedSoFar}
+${alreadyHaveStr}
+STILL NEED: ${sessionData.phoneNumbers?.length ? "" : "phone number"} ${sessionData.upiIds?.length ? "" : "UPI ID"} ${sessionData.bankAccounts?.length ? "" : "bank account"} ${sessionData.phishingLinks?.length ? "" : "phishing link"}
 
 RECENT CONVERSATION:
 ${recentHistory || "This is the very first message."}
@@ -129,16 +140,17 @@ INSTRUCTIONS FOR THIS TURN (${phase}):
 ${getPhaseInstructions(phase, turnCount, extractedSoFar)}
 
 Write ONLY Ramesh's reply. Nothing else. No labels. No quotes around it.
-Remember: end with something that FORCES another scammer response.`;
+Remember: end with something that FORCES another scammer response.
+CRITICAL: Do NOT ask for info already collected. Focus on extracting what is still missing.`;
 
     const response = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
+      model: "llama-3.3-70b-versatile",
       messages: [
         { role: "system", content: PERSONA_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ],
-      temperature: 1.0,
-      max_tokens: 180,
+      temperature: 0.9,
+      max_tokens: 120,
     });
 
     let reply = response.choices[0].message.content.trim();
@@ -159,7 +171,6 @@ Remember: end with something that FORCES another scammer response.`;
       return getFallbackReply(scamType, turnCount);
     }
 
-    if (reply.length < 10) { return getFallbackReply(scamType, turnCount); }
     // Safety: if reply is too long, truncate
     if (reply.length > 300) {
       reply = reply.substring(0, 300).split(".").slice(0, -1).join(".") + ".";

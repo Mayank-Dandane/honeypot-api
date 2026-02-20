@@ -66,7 +66,7 @@ async function extractIntelligence(message, conversationHistory = []) {
         { role: "user", content: `Extract from ALL scammer messages: "${allScammerMessages}"` },
       ],
       temperature: 0.1,
-      max_tokens: 500,
+      max_tokens: 350,
       response_format: { type: "json_object" },
     });
 
