@@ -15,6 +15,7 @@ function getOrCreateSession(sessionId) {
       createdAt: Date.now(),
       lastUpdated: Date.now(),
       totalMessages: 0,
+      redFlagScore: 0,
       scamConfirmed: false,
       scamType: null,
       callbackSent: false,
@@ -61,6 +62,19 @@ function updateSession(sessionId, updates) {
       });
     }
   });
+
+  // Accumulate red flag score across turns
+  if (updates.redFlagScore) {
+    session.redFlagScore = (session.redFlagScore || 0) + updates.redFlagScore;
+    // If cumulative score >= 6, permanently confirm scam
+    if (session.redFlagScore >= 6) {
+      session.scamConfirmed = true;
+    }
+    // Escalate confidence if very high score
+    if (session.redFlagScore >= 8) {
+      session.highConfidence = true;
+    }
+  }
 
   // Scalar updates
   if (updates.scamConfirmed !== undefined)
