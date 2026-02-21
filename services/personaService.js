@@ -110,7 +110,7 @@ Remember: end with something that FORCES another scammer response.
 CRITICAL: Do NOT ask for info already collected. Focus on extracting what is still missing.`;
 
     const response = await groq.chat.completions.create({
-      model: "llama-3.1-70b-versatile",
+      model: "llama-3.3-70b-versatile",
       messages: [
         { role: "system", content: PERSONA_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },

@@ -1,5 +1,5 @@
 /**
- * test.js — Full multi-turn test simulation
+ * test.js — Multi-Scenario Honeypot Test
  * Run: node test.js
  */
 
@@ -8,110 +8,151 @@ const axios = require("axios");
 const BASE_URL = process.env.TEST_URL || "http://localhost:3000";
 const API_KEY = "ef038d81e00a408eaabaa01d6479deb5";
 
-const SESSION_ID = `test-session-${Date.now()}`;
-
-const scamScenario = [
-  "URGENT: Your SBI account has been compromised. Your account will be blocked in 2 hours. Share your OTP immediately to verify your identity.",
-  "I am calling from SBI Fraud Prevention Department. My employee ID is SBI-FR-4521. Please confirm your registered mobile number.",
-  "Sir, to process the reversal, I need your UPI ID. My UPI is sbifraud.help@ybl. Please send ₹1 as verification.",
-  "Sir, your case has been escalated. Call me back at +91-9876543210 for urgent resolution. Time is running out.",
-  "Sir, if you don't verify in 5 minutes, your account XXXX1234 with ₹45,000 balance will be permanently frozen by RBI order.",
+// ─────────────────────────────────────────────
+// SCENARIOS (Evaluator-style)
+// ─────────────────────────────────────────────
+const scenarios = [
+  {
+    scenarioId: "upi_fraud",
+    name: "UPI Fraud Multi-turn",
+    description: "UPI fraud with cashback scam",
+    scamType: "upi_fraud",
+    initialMessage:
+      "Congratulations! You have won a cashback of Rs. 5000 from Paytm. To claim your reward, please verify your UPI details. This is from official customer support.",
+    metadata: {
+      channel: "WhatsApp",
+      language: "English",
+      locale: "IN",
+    },
+    weight: 10,
+    maxTurns: 5,
+    fakeData: {
+      upiId: "cashback.scam@fakeupi",
+      phoneNumber: "+91-8765432109",
+    },
+  },
+  {
+    scenarioId: "phishing_link",
+    name: "Phishing Link Detection",
+    description: "Phishing link with fake offer",
+    scamType: "phishing",
+    initialMessage:
+      "You have been selected for iPhone 15 Pro at just Rs. 999! Click here to claim: http://amaz0n-deals.fake-site.com/claim?id=12345. Offer expires in 10 minutes!",
+    metadata: {
+      channel: "Email",
+      language: "English",
+      locale: "IN",
+    },
+    weight: 10,
+    maxTurns: 5,
+    fakeData: {
+      phishingLink:
+        "http://amaz0n-deals.fake-site.com/claim?id=12345",
+      emailAddress: "offers@fake-amazon-deals.com",
+    },
+  },
 ];
 
-async function runTest() {
-  console.log("🍯 Honeypot API — Multi-Turn Test");
-  console.log("=".repeat(60));
-  console.log(`Session ID: ${SESSION_ID}`);
-  console.log(`Target: ${BASE_URL}/honeypot\n`);
+// ─────────────────────────────────────────────
+// MAIN TEST RUNNER
+// ─────────────────────────────────────────────
+async function runScenario(scenario) {
+  const SESSION_ID = `test-${scenario.scenarioId}-${Date.now()}`;
+
+  console.log("\n" + "=".repeat(70));
+  console.log(`🎯 Scenario: ${scenario.name}`);
+  console.log(`Session: ${SESSION_ID}`);
+  console.log("=".repeat(70));
 
   const conversationHistory = [];
 
-  for (let i = 0; i < scamScenario.length; i++) {
-    const scamMessage = scamScenario[i];
-    const turn = i + 1;
+  let currentMessage = scenario.initialMessage;
 
+  for (let turn = 1; turn <= scenario.maxTurns; turn++) {
     console.log(`\n--- Turn ${turn} ---`);
-    console.log(`🦹 Scammer: ${scamMessage}`);
+    console.log(`🦹 Scammer: ${currentMessage}`);
 
     const requestBody = {
       sessionId: SESSION_ID,
       message: {
         sender: "scammer",
-        text: scamMessage,
+        text: currentMessage,
         timestamp: Date.now(),
       },
       conversationHistory,
-      metadata: {
-        channel: "SMS",
-        language: "English",
-        locale: "IN",
-      },
+      metadata: scenario.metadata,
     };
 
     try {
       const start = Date.now();
-      const response = await axios.post(`${BASE_URL}/honeypot`, requestBody, {
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": API_KEY,
-        },
-        timeout: 35000,
-      });
+
+      const response = await axios.post(
+        `${BASE_URL}/honeypot`,
+        requestBody,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": API_KEY,
+          },
+          timeout: 35000,
+        }
+      );
+
       const elapsed = Date.now() - start;
 
-      if (response.status !== 200) {
-        console.error(`❌ Bad status: ${response.status}`);
-        break;
-      }
-
-      const reply =
-        response.data.reply ||
-        response.data.message ||
-        response.data.text;
-
-      if (!reply) {
-        console.error("❌ No reply field in response!");
-        console.error("Response:", response.data);
-        break;
-      }
+      const reply = response.data.reply;
 
       console.log(`🎭 Honeypot (${elapsed}ms): ${reply}`);
 
       // Update history
       conversationHistory.push({
         sender: "scammer",
-        text: scamMessage,
+        text: currentMessage,
         timestamp: Date.now(),
       });
+
       conversationHistory.push({
         sender: "user",
         text: reply,
         timestamp: Date.now(),
       });
 
-      // Small delay between turns
-      await new Promise((r) => setTimeout(r, 1000));
-    } catch (err) {
-      if (err.code === "ECONNREFUSED") {
-        console.error("❌ Server not running. Start with: npm start");
+      // For realism, inject fake data after turn 2
+      if (turn === 2 && scenario.fakeData) {
+        if (scenario.fakeData.upiId) {
+          currentMessage = `My UPI is ${scenario.fakeData.upiId}. Please send verification amount immediately.`;
+        } else if (scenario.fakeData.phishingLink) {
+          currentMessage = `Send your details to ${scenario.fakeData.emailAddress} and confirm on ${scenario.fakeData.phishingLink}`;
+        } else if (scenario.fakeData.phoneNumber) {
+          currentMessage = `Call me at ${scenario.fakeData.phoneNumber} for immediate resolution.`;
+        } else {
+          currentMessage = "Please act fast. Time is limited.";
+        }
       } else {
-        console.error("❌ Error:", err.message);
+        currentMessage = "Please respond quickly. This is urgent.";
       }
-      break;
+
+      await new Promise((r) => setTimeout(r, 1000));
+
+    } catch (err) {
+      console.error("❌ Error:", err.message);
+      return;
     }
   }
 
-  console.log("\n" + "=".repeat(60));
-  console.log("✅ Test complete!");
-  console.log(`\n📊 Check session data:`);
-  
+  // ─────────────────────────────────────────────
+  // Check Session Debug
+  // ─────────────────────────────────────────────
+  console.log("\n📊 Session Summary:");
+
   try {
     const sessionRes = await axios.get(
       `${BASE_URL}/honeypot/session/${SESSION_ID}`,
       { headers: { "x-api-key": API_KEY } }
     );
+
     const s = sessionRes.data;
-    console.log(`   Messages: ${s.totalMessages}`);
+
     console.log(`   Scam Confirmed: ${s.scamConfirmed}`);
     console.log(`   Scam Type: ${s.scamType}`);
     console.log(`   Phone Numbers: ${s.phoneNumbers?.join(", ") || "none"}`);
@@ -119,14 +160,18 @@ async function runTest() {
     console.log(`   Bank Accounts: ${s.bankAccounts?.join(", ") || "none"}`);
     console.log(`   Phishing Links: ${s.phishingLinks?.join(", ") || "none"}`);
     console.log(`   Callback Sent: ${s.callbackSent}`);
-  } catch (e) {
-    console.log("   (Session debug endpoint not reachable)");
+  } catch {
+    console.log("   (Session endpoint not reachable)");
   }
-
-  console.log("\n🔥 Manually trigger final callback:");
-  console.log(
-    `   curl -X POST ${BASE_URL}/honeypot/finalize/${SESSION_ID} -H "x-api-key: ${API_KEY}"`
-  );
 }
 
-runTest().catch(console.error);
+// ─────────────────────────────────────────────
+// Run All Scenarios
+// ─────────────────────────────────────────────
+(async () => {
+  for (const scenario of scenarios) {
+    await runScenario(scenario);
+  }
+
+  console.log("\n🔥 All scenario tests completed!");
+})();
